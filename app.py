@@ -11,7 +11,7 @@ app = FastAPI(title="Aura Health API", version="1.0.0")
 # Настройка CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # В продакшене заменить на конкретные домены
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -28,29 +28,21 @@ async def root():
 async def health_check():
     return {"status": "healthy", "celebrity_count": len(analyzer.celebrity_database)}
 
-@app.get("/questionnaire")
-async def get_questionnaire():
-    """Возвращает анкету для фронтенда"""
-    return analyzer.get_web_questionnaire()
-
-@app.post("/analyze")
-async def analyze_photo(
+@app.post("/analyze/single")
+async def analyze_single_photo(
     file: UploadFile = File(...),
     user_id: str = "default"
 ):
-    """Основной эндпоинт для анализа фото"""
+    """Анализ одного фото"""
     try:
-        # Проверяем тип файла
         if not file.content_type.startswith('image/'):
             raise HTTPException(status_code=400, detail="File must be an image")
         
-        # Читаем байты изображения
         image_bytes = await file.read()
         
         if len(image_bytes) == 0:
             raise HTTPException(status_code=400, detail="Empty file")
         
-        # Анализируем изображение
         result = analyzer.analyze_from_bytes(
             image_bytes=image_bytes,
             user_id=user_id
@@ -66,42 +58,52 @@ async def analyze_photo(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
 
-@app.get("/user/{user_id}/history")
-async def get_user_history(user_id: str):
-    """Возвращает историю анализов пользователя"""
+@app.post("/analyze/3d")
+async def analyze_3d_scan(
+    front: UploadFile = File(...),
+    left: UploadFile = File(...), 
+    right: UploadFile = File(...),
+    user_id: str = "default"
+):
+    """Анализ 3 ракурсов (фронт, лево, право)"""
     try:
-        history_data = analyzer.get_trends_data(user_id)
-        return history_data
+        # Проверяем все файлы
+        for file, angle in [(front, "front"), (left, "left"), (right, "right")]:
+            if not file.content_type.startswith('image/'):
+                raise HTTPException(status_code=400, detail=f"{angle} file must be an image")
+        
+        # Читаем байты всех изображений
+        front_bytes = await front.read()
+        left_bytes = await left.read()
+        right_bytes = await right.read()
+        
+        # Проверяем что файлы не пустые
+        for bytes_data, angle in [(front_bytes, "front"), (left_bytes, "left"), (right_bytes, "right")]:
+            if len(bytes_data) == 0:
+                raise HTTPException(status_code=400, detail=f"{angle} file is empty")
+        
+        # Анализируем 3 изображения
+        result = analyzer.analyze_3d_scan(
+            front_bytes=front_bytes,
+            left_bytes=left_bytes, 
+            right_bytes=right_bytes,
+            user_id=user_id
+        )
+        
+        if "error" in result:
+            raise HTTPException(status_code=400, detail=result["error"])
+        
+        return JSONResponse(content=result)
+        
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get history: {str(e)}")
-
-@app.get("/scan/{scan_id}/radar")
-async def get_radar_data(scan_id: str):
-    """Возвращает данные для радар-диаграммы"""
-    try:
-        radar_data = analyzer.get_radar_chart_data(scan_id)
-        if "error" in radar_data:
-            raise HTTPException(status_code=404, detail=radar_data["error"])
-        return radar_data
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get radar data: {str(e)}")
-
-@app.get("/celebrities")
-async def get_celebrities():
-    """Возвращает список доступных знаменитостей"""
-    celebrities = [
-        {
-            "name": celeb_data["name"],
-            "description": f"Сравнение с {celeb_data['name']}"
-        }
-        for celeb_data in analyzer.celebrity_database.values()
-    ]
-    return {"celebrities": celebrities}
+        raise HTTPException(status_code=500, detail=f"3D analysis failed: {str(e)}")
 
 if __name__ == "__main__":
     uvicorn.run(
         "app:app",
-        host="0.0.0.0",
+        host="0.0.0.0", 
         port=8000,
-        reload=True  # Только для разработки
+        reload=False
     )
