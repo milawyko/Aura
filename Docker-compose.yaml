@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  aura-backend:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./celebrities:/app/celebrities
+      - ./models:/app/models
+    environment:
+      - PYTHONUNBUFFERED=1
+      - USE_HUGGINGFACE=true
+    restart: unless-stopped
+
+  # Дополнительный сервис для Redis (кеширование)
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
+  # Дополнительный сервис для PostgreSQL (если нужно хранить историю)
+  postgres:
+    image: postgres:13
+    environment:
+      POSTGRES_DB: aura_db
+      POSTGRES_USER: aura_user
+      POSTGRES_PASSWORD: aura_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
