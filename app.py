@@ -2,7 +2,7 @@ from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import uvicorn
-from aura_analyzer import analyze_3_images
+from aura_analyzer import AuraHealthAnalyzer
 import json
 
 app = FastAPI(title="Aura Health API", version="1.0.0")
@@ -15,6 +15,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+analyzer = AuraHealthAnalyzer(use_huggingface=True)
 
 @app.get("/")
 async def root():
@@ -49,10 +51,11 @@ async def create_analysis(
                 raise HTTPException(status_code=400, detail=f"{angle} file is empty")
         
         # Анализируем 3 изображения
-        result = analyze_3_images(
+        result = analyzer.analyze_3d_scan_from_bytes(
             front_bytes=front_bytes,
             left_bytes=left_bytes, 
-            right_bytes=right_bytes
+            right_bytes=right_bytes,
+            user_id=user_id
         )
         
         if "error" in result:
