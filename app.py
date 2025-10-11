@@ -2,13 +2,12 @@ from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import uvicorn
-from aura_analyzer import AuraHealthAnalyzer
+from aura_analyzer import analyze_3_images
 import json
-import os
 
 app = FastAPI(title="Aura Health API", version="1.0.0")
 
-# Настройка CORS
+# CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -17,55 +16,22 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Инициализация анализатора
-analyzer = AuraHealthAnalyzer(use_huggingface=True)
-
 @app.get("/")
 async def root():
     return {"message": "Aura Health Analysis API is running"}
 
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy", "celebrity_count": len(analyzer.celebrity_database)}
+    return {"status": "healthy"}
 
-@app.post("/analyze/single")
-async def analyze_single_photo(
-    file: UploadFile = File(...),
-    user_id: str = "default"
-):
-    """Анализ одного фото"""
-    try:
-        if not file.content_type.startswith('image/'):
-            raise HTTPException(status_code=400, detail="File must be an image")
-        
-        image_bytes = await file.read()
-        
-        if len(image_bytes) == 0:
-            raise HTTPException(status_code=400, detail="Empty file")
-        
-        result = analyzer.analyze_from_bytes(
-            image_bytes=image_bytes,
-            user_id=user_id
-        )
-        
-        if "error" in result:
-            raise HTTPException(status_code=400, detail=result["error"])
-        
-        return JSONResponse(content=result)
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
-
-@app.post("/analyze/3d")
-async def analyze_3d_scan(
+@app.post("/analysis")
+async def create_analysis(
     front: UploadFile = File(...),
     left: UploadFile = File(...), 
     right: UploadFile = File(...),
     user_id: str = "default"
 ):
-    """Анализ 3 ракурсов (фронт, лево, право)"""
+    """Основной эндпоинт для анализа 3 изображений"""
     try:
         # Проверяем все файлы
         for file, angle in [(front, "front"), (left, "left"), (right, "right")]:
@@ -83,11 +49,10 @@ async def analyze_3d_scan(
                 raise HTTPException(status_code=400, detail=f"{angle} file is empty")
         
         # Анализируем 3 изображения
-        result = analyzer.analyze_3d_scan(
+        result = analyze_3_images(
             front_bytes=front_bytes,
             left_bytes=left_bytes, 
-            right_bytes=right_bytes,
-            user_id=user_id
+            right_bytes=right_bytes
         )
         
         if "error" in result:
